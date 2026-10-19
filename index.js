@@ -20,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HELPER = path.join(HERE, 'helper.ps1');
+
+export const inject = ['webServer'];
+
 function findAppExe() {
   const candidates = [];
   try {
