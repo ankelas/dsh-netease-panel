@@ -1,0 +1,5 @@
+# NetEase music panel: one host row so the Loader scans the package and the
+# client-modules plugin discovers the browser half through `dsh.client`.
+- insert:
+    - id: netease-panel
+      name: dsh-netease-panel

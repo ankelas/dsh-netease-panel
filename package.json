@@ -1,0 +1,53 @@
+{
+  "name": "dsh-netease-panel",
+  "version": "1.0.0",
+  "description": "网易云音乐控制面板：在 DSH Web UI 里查看当前播放、控制播放/切歌/音量、选择歌单与歌曲，并显示逐字同步歌词（Windows，使用本地网易云客户端）。",
+  "license": "MIT",
+  "author": "dsh-netease-panel contributors",
+  "type": "module",
+  "os": [
+    "win32"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "netease",
+    "netease-cloud-music",
+    "music",
+    "lyrics"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "helper.ps1",
+    "netease-logo.png",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.1-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
