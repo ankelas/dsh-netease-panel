@@ -124,6 +124,8 @@ const elog = {
   position: 0,
   relativeTime: 0,
   timer: null,
+  pending: '',
+  decoder: null,
 };
 
 function findElog() {
@@ -276,7 +278,11 @@ function startElog() {
   try {
     const buf = readFileSync(file);
     elog.offset = buf.length;
-    for (const raw of decodeElog(buf).split('\n')) {
+    elog.decoder = new TextDecoder('utf-8');
+    elog.pending = '';
+    const lines = decodeElog(buf).split('\n');
+    elog.pending = lines.pop() || '';
+    for (const raw of lines) {
       const line = raw.trim();
       if (!line) continue;
       const ts = headerTimestamp(line);
@@ -287,7 +293,11 @@ function startElog() {
   elog.timer = setInterval(() => {
     try {
       const size = statSync(elog.path).size;
-      if (size < elog.offset) elog.offset = 0;
+      if (size < elog.offset) {
+        elog.offset = 0;
+        elog.pending = '';
+        elog.decoder = new TextDecoder('utf-8');
+      }
       if (size <= elog.offset) return;
       const fd = openSync(elog.path, 'r');
       try {
@@ -295,7 +305,11 @@ function startElog() {
         const buf = Buffer.alloc(len);
         readSync(fd, buf, 0, len, elog.offset);
         elog.offset = size;
-        for (const raw of decodeElog(buf).split('\n')) {
+        const text = elog.decoder.decode(buf, { stream: true });
+        elog.pending += text;
+        const parts = elog.pending.split('\n');
+        elog.pending = parts.pop() || '';
+        for (const raw of parts) {
           const line = raw.trim();
           if (!line) continue;
           const ts = headerTimestamp(line);

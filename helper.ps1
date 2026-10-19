@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = [Console]::OutputEncoding
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 
 Add-Type -TypeDefinition @"
