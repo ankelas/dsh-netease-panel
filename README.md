@@ -25,14 +25,16 @@
 
 ## 安装
 
+从 GitHub 仓库直接安装：
+
 ```bash
-dsh plugin --profile <你的 profile> add dsh-netease-panel
+dsh plugin --profile <你的 profile> add github:ankelas/dsh-netease-panel
 ```
 
-或在 DSH 的插件管理界面里搜索/输入包名安装：
+或下载 Release 里的 `dsh-netease-panel-1.0.0.tgz`，用本地路径安装：
 
-```
-dsh-netease-panel
+```bash
+dsh plugin --profile <你的 profile> add <tgz 绝对路径>
 ```
 
 安装后刷新页面，右下角出现官方网易云图标，点开即用。

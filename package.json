@@ -18,6 +18,11 @@
     "music",
     "lyrics"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ankelas/dsh-netease-panel.git"
+  },
+  "homepage": "https://github.com/ankelas/dsh-netease-panel",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
