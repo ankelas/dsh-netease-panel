@@ -14,23 +14,29 @@ $stateFile = Join-Path $env:TEMP 'dsh-netease-overlay.json'
 $script:lineText = ''
 $script:transText = ''
 
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$width = 960
+$height = 170
+
 $form = New-Object System.Windows.Forms.Form
 $form.FormBorderStyle = 'None'
 $form.StartPosition = 'Manual'
-$form.Bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$form.Width = $width
+$form.Height = $height
+$form.Left = [int](($screen.Width - $width) / 2)
+$form.Top = [int]($screen.Height - $height - 90)
 $form.TopMost = $true
 $form.ShowInTaskbar = $false
-$form.BackColor = [System.Drawing.Color]::Fuchsia
-$form.TransparencyKey = [System.Drawing.Color]::Fuchsia
+$form.BackColor = [System.Drawing.Color]::FromArgb(11, 14, 22)
+$form.Opacity = 1.0
 
 $picture = New-Object System.Windows.Forms.PictureBox
-$picture.Dock = 'Bottom'
-$picture.Height = 320
-$picture.BackColor = [System.Drawing.Color]::Fuchsia
+$picture.Dock = 'Fill'
+$picture.BackColor = [System.Drawing.Color]::FromArgb(11, 14, 22)
 $form.Controls.Add($picture)
 
-$fontMain = New-Object System.Drawing.Font('Microsoft YaHei', 26, ([System.Drawing.FontStyle]::Bold -bor [System.Drawing.FontStyle]::Italic))
-$fontTr = New-Object System.Drawing.Font('Microsoft YaHei', 14)
+$fontMain = New-Object System.Drawing.Font('Microsoft YaHei', 24, ([System.Drawing.FontStyle]::Bold -bor [System.Drawing.FontStyle]::Italic))
+$fontTr = New-Object System.Drawing.Font('Microsoft YaHei', 13)
 $goldBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(216, 165, 35))
 $whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 254, 239))
 $shadowBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(0, 0, 0))
@@ -46,16 +52,15 @@ function Render-Overlay {
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-  $g.Clear([System.Drawing.Color]::Fuchsia)
-  $rectMain = New-Object System.Drawing.RectangleF(0, 40, $w, 120)
-  $rectTr = New-Object System.Drawing.RectangleF(0, 175, $w, 60)
+  $g.Clear([System.Drawing.Color]::FromArgb(11, 14, 22))
+  $rectMain = New-Object System.Drawing.RectangleF(16, 14, ($w - 32), 90)
+  $rectTr = New-Object System.Drawing.RectangleF(16, 108, ($w - 32), 44)
   if ($script:lineText) {
-    $g.DrawString($script:lineText, $fontMain, $shadowBrush, ($rectMain.X + 3), ($rectMain.Y + 3), $fmt)
+    $g.DrawString($script:lineText, $fontMain, $shadowBrush, ($rectMain.X + 2), ($rectMain.Y + 2), $fmt)
     $g.DrawString($script:lineText, $fontMain, $goldBrush, ($rectMain.X + 1), ($rectMain.Y + 1), $fmt)
     $g.DrawString($script:lineText, $fontMain, $whiteBrush, $rectMain, $fmt)
   }
   if ($script:transText) {
-    $g.DrawString($script:transText, $fontTr, $shadowBrush, ($rectTr.X + 2), ($rectTr.Y + 2), $fmt)
     $g.DrawString($script:transText, $fontTr, $whiteBrush, $rectTr, $fmt)
   }
   $g.Dispose()
