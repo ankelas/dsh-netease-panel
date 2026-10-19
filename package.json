@@ -1,6 +1,6 @@
 {
   "name": "dsh-netease-panel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "网易云音乐控制面板：在 DSH Web UI 里查看当前播放、控制播放/切歌/音量、选择歌单与歌曲，并显示逐字同步歌词（Windows，使用本地网易云客户端）。",
   "license": "MIT",
   "author": "dsh-netease-panel contributors",
@@ -38,7 +38,8 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "overlay.ps1"
   ],
   "engines": {
     "node": ">=20"

@@ -13,7 +13,7 @@
  *  - opening a playlist hands `orpheus://playlist/<id>` to the client.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -507,6 +507,80 @@ function playSongCommand(id) {
   send('open orpheus://' + encoded);
 }
 
+/* ─────────────────────────────── overlay ─────────────────────────────── */
+
+const OVERLAY_FILE = path.join(os.tmpdir(), 'dsh-netease-overlay.json');
+const overlay = { child: null, timer: null, busy: false };
+
+function overlayStop() {
+  if (overlay.timer) {
+    clearInterval(overlay.timer);
+    overlay.timer = null;
+  }
+  if (overlay.child) {
+    try { overlay.child.kill(); } catch (e) { /* ignore */ }
+    overlay.child = null;
+  }
+  try { writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8'); } catch (e) { /* ignore */ }
+}
+
+async function overlayTick() {
+  if (overlay.busy) return;
+  overlay.busy = true;
+  try {
+    const play = playState();
+    if (!play.song) {
+      writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8');
+      return;
+    }
+    const lyric = await getLyric(play.song.id);
+    const lines = (lyric && lyric.lines) || [];
+    const position = play.position;
+    let index = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].t <= position + 0.15) index = i;
+      else break;
+    }
+    if (index < 0) {
+      writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8');
+      return;
+    }
+    const line = lines[index];
+    const next = lines[index + 1];
+    const span = Math.max(0.8, (next ? next.t : position + 6) - line.t);
+    const chars = Array.from(line.text);
+    const per = Math.min(0.11, span / Math.max(1, chars.length));
+    const shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
+    writeFileSync(OVERLAY_FILE, JSON.stringify({ text: chars.slice(0, shown).join(''), tr: line.tr || '' }), 'utf8');
+  } catch (e) {
+    /* transient: next tick retries */
+  } finally {
+    overlay.busy = false;
+  }
+}
+
+function overlayStart() {
+  if (overlay.child) return true;
+  try {
+    overlay.child = spawn('powershell.exe', [
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', path.join(HERE, 'overlay.ps1'),
+    ], { windowsHide: true, stdio: 'ignore' });
+  } catch (e) {
+    overlay.child = null;
+    return false;
+  }
+  overlay.child.on('exit', () => {
+    overlay.child = null;
+    if (overlay.timer) {
+      clearInterval(overlay.timer);
+      overlay.timer = null;
+    }
+  });
+  overlay.timer = setInterval(overlayTick, 150);
+  overlayTick();
+  return true;
+}
+
 function openApp() {
   try {
     const p = spawn(findAppExe(), [], { detached: true, stdio: 'ignore' });
@@ -539,6 +613,7 @@ export function apply(ctx) {
       clearInterval(timer);
       send('quit');
       stopElog();
+      overlayStop();
       if (child) {
         try { child.kill(); } catch (e) { /* ignore */ }
         child = null;
@@ -564,6 +639,15 @@ export function apply(ctx) {
         if (!id) return reply(res, 400, { ok: false, error: 'bad-id' });
         playSongCommand(id);
         return reply(res, 200, { ok: true });
+      }
+      if (p === '/netease/overlay') {
+        const on = url.searchParams.get('on');
+        if (on === '1') return reply(res, 200, { ok: overlayStart(), on: Boolean(overlay.child) });
+        if (on === '0') {
+          overlayStop();
+          return reply(res, 200, { ok: true, on: false });
+        }
+        return reply(res, 200, { ok: true, on: Boolean(overlay.child) });
       }
       if (p === '/netease/playlist') {
         const id = String(url.searchParams.get('id') || '').replace(/\D/g, '');
