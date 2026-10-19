@@ -228,6 +228,62 @@ window.__ModuleLoader__.load({
       return x - Math.floor(x);
     }
 
+    function lineIndexAt(lines, position) {
+      let index = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].t <= position + 0.15) index = i;
+        else break;
+      }
+      return index;
+    }
+
+    function setupPipDoc(win) {
+      const doc = win.document;
+      doc.title = '歌词';
+      const style = doc.createElement('style');
+      style.textContent = `
+html, body { margin: 0; height: 100%; background: #06070b; color: #fffeef; overflow: hidden;
+  font-family: "Microsoft YaHei", "PingFang SC", ui-sans-serif, system-ui, sans-serif; user-select: none; }
+.wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 14px 18px; box-sizing: border-box; }
+.line { font-size: 26px; font-weight: 700; font-style: italic; line-height: 1.45; text-align: center;
+  letter-spacing: .04em; text-shadow: -1px -1px 0 #d8a523, 1px -1px 0 #d8a523, -1px 1px 0 #d8a523,
+    1px 1px 0 #d8a523, 0 4px 16px rgba(0, 0, 0, .9); }
+.tr { font-size: 15px; line-height: 1.5; margin-top: 6px; text-align: center; opacity: .82;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, .9); }
+`;
+      doc.head.appendChild(style);
+      doc.body.innerHTML = '<div class="wrap"><div id="dsh-ext-line" class="line"></div><div id="dsh-ext-tr" class="tr"></div></div>';
+    }
+
+    function renderExternal(win, data) {
+      const doc = win.document;
+      const lineEl = doc.getElementById('dsh-ext-line');
+      const trEl = doc.getElementById('dsh-ext-tr');
+      if (!lineEl || !trEl) return;
+      const play = data.play;
+      if (!play || !play.song || !data.lines.length) {
+        lineEl.textContent = '';
+        trEl.textContent = '';
+        return;
+      }
+      const position = play.position + (play.playing ? (performance.now() - play.at) / 1000 : 0);
+      const index = lineIndexAt(data.lines, position);
+      if (index < 0) {
+        lineEl.textContent = '';
+        trEl.textContent = '';
+        return;
+      }
+      const line = data.lines[index];
+      const next = data.lines[index + 1];
+      const span = Math.max(0.8, (next ? next.t : position + 6) - line.t);
+      const chars = Array.from(line.text);
+      const per = Math.min(0.11, span / Math.max(1, chars.length));
+      const shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
+      lineEl.textContent = chars.slice(0, shown).join('');
+      trEl.textContent = line.tr || '';
+    }
+
     function Logo(props) {
       const size = props.size || 24;
       return h('img', {
@@ -380,6 +436,47 @@ window.__ModuleLoader__.load({
       const [play, setPlay] = React.useState(null);
       const [lyric, setLyric] = React.useState({ id: 0, lines: [] });
       const [clock, setClock] = React.useState(0);
+      const [externalOn, setExternalOn] = React.useState(false);
+      const pipWinRef = React.useRef(null);
+      const extDataRef = React.useRef({ play: null, lines: [] });
+
+      const toggleExternal = async () => {
+        if (externalOn) {
+          try { if (pipWinRef.current) pipWinRef.current.close(); } catch (e) { /* ignore */ }
+          pipWinRef.current = null;
+          setExternalOn(false);
+          return;
+        }
+        const dpip = window.documentPictureInPicture;
+        if (!dpip || typeof dpip.requestWindow !== 'function') {
+          setNote('当前环境不支持外部歌词窗口');
+          setTimeout(() => setNote(''), 3500);
+          return;
+        }
+        try {
+          const win = await dpip.requestWindow({ width: 880, height: 200, disallowReturnToOpener: false });
+          pipWinRef.current = win;
+          setupPipDoc(win);
+          win.addEventListener('pagehide', () => {
+            pipWinRef.current = null;
+            setExternalOn(false);
+          });
+          setExternalOn(true);
+        } catch (e) {
+          setNote('外部歌词窗口打开失败');
+          setTimeout(() => setNote(''), 3500);
+        }
+      };
+
+      React.useEffect(() => {
+        if (!externalOn) return undefined;
+        const timer = setInterval(() => {
+          const win = pipWinRef.current;
+          if (!win || win.closed) return;
+          try { renderExternal(win, extDataRef.current); } catch (e) { /* window closing */ }
+        }, 120);
+        return () => clearInterval(timer);
+      }, [externalOn]);
 
       const toggleLyric = () => {
         setLyricOn((on) => {
@@ -483,6 +580,8 @@ window.__ModuleLoader__.load({
           visible.push({ line, i, age, isCurrent: i === currentIndex });
         }
       }
+
+      extDataRef.current = { play, lines: lyric.lines };
 
       const playing = remote && remote.session && remote.status === 'Playing';
 
@@ -599,7 +698,12 @@ window.__ModuleLoader__.load({
               onClick: toggleLyric,
               title: '在页面里显示同步歌词',
             }, lyricOn ? '歌词 · 开' : '歌词 · 关'),
-            h('span', { className: 'ntp-src' }, '全屏随机位置 · 逐字显示'),
+            h('button', {
+              type: 'button',
+              className: 'ntp-tool' + (externalOn ? ' on' : ''),
+              onClick: toggleExternal,
+              title: '在 DSH 之外显示歌词（独立置顶小窗）',
+            }, externalOn ? '外部歌词 · 开' : '外部歌词'),
           ),
 
           h('div', { className: 'ntp-lists' },
