@@ -576,8 +576,7 @@ async function overlayTick() {
           key: play.song.id + '-' + i,
           text,
           tr: line.tr || '',
-          x: Number(x.toFixed(2)),
-          y: Number(y.toFixed(2)),
+          seed: Math.round(seed * 1000),
           rot: Number(rot.toFixed(1)),
           opacity: i === index ? 1 : Number((fade * 0.9).toFixed(3)),
         });

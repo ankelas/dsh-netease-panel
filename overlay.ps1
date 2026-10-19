@@ -96,13 +96,22 @@ $timer.Add_Tick({
         $canvas.Children.Add($block.panel) | Out-Null
         $block.panel.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 0.5)
         $block.panel.RenderTransform = New-Object System.Windows.Media.RotateTransform([double]$item.rot)
+        $s = [double]$item.seed
+        $r1 = [Math]::Abs([Math]::Sin($s) * 10000); $r1 = $r1 - [Math]::Floor($r1)
+        $r2 = [Math]::Abs([Math]::Sin($s + 17) * 10000); $r2 = $r2 - [Math]::Floor($r2)
+        $block.px = 0.15 + $r1 * 0.7
+        $block.py = 0.2 + $r2 * 0.55
       }
       $block.panel.Width = [Math]::Max(320, ($w * 0.4))
       $block.main.Text = [string]$item.text
       $block.tr.Text = [string]$item.tr
       $block.panel.Opacity = [double]$item.opacity
-      [System.Windows.Controls.Canvas]::SetLeft($block.panel, (($item.x / 100) * $w * 0.625 - ($block.panel.Width / 2)))
-      [System.Windows.Controls.Canvas]::SetTop($block.panel, (($item.y / 100) * $h * 0.75 - 50))
+      $cx = $block.px * $w
+      $cy = $block.py * $h
+      $left = [Math]::Max(12, [Math]::Min(($w - $block.panel.Width - 12), ($cx - ($block.panel.Width / 2))))
+      $top = [Math]::Max(16, [Math]::Min(($h - 200), ($cy - 50)))
+      [System.Windows.Controls.Canvas]::SetLeft($block.panel, $left)
+      [System.Windows.Controls.Canvas]::SetTop($block.panel, $top)
     }
     foreach ($key in @($script:blocks.Keys)) {
       if (-not $seen.ContainsKey($key)) {
