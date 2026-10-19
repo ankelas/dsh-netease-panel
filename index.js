@@ -115,6 +115,11 @@ function decodeElog(buf) {
   return out.toString('utf8');
 }
 
+function rand(seed) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
 const HEADER_RE = /^\[(\d+):(\d+):(\d{4}\/\d{6}:\d+):([A-Z]+):([a-zA-Z0-9._-]+)\((\d+)\)\]\s+\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/;
 const RE_POSITION = /【playing】,"setPlayingPosition",(\d+(?:\.\d+)?)/;
 const RE_STATUS = /【playing】,"native播放state",(\d+),/;
@@ -524,7 +529,7 @@ function overlayStop() {
     try { overlay.child.kill(); } catch (e) { /* ignore */ }
     overlay.child = null;
   }
-  try { writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8'); } catch (e) { /* ignore */ }
+  try { writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8'); } catch (e) { /* ignore */ }
 }
 
 async function overlayTick() {
@@ -533,7 +538,7 @@ async function overlayTick() {
   try {
     const play = playState();
     if (!play.song) {
-      writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8');
+      writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
       return;
     }
     const lyric = await getLyric(play.song.id);
@@ -544,17 +549,41 @@ async function overlayTick() {
       if (lines[i].t <= position + 0.15) index = i;
       else break;
     }
-    if (index < 0) {
-      writeFileSync(OVERLAY_FILE, JSON.stringify({ text: '', tr: '' }), 'utf8');
-      return;
+    const out = [];
+    if (index >= 0) {
+      const KEEP = 9.5;
+      const FADE_START = 8.0;
+      const FADE_LEN = 1.5;
+      for (let i = Math.max(0, index - 4); i <= index; i++) {
+        const line = lines[i];
+        const age = position - line.t;
+        if (age < 0 || age > KEEP) continue;
+        const seed = i * 137 + (play.song.id || 1);
+        const x = 30 + rand(seed) * 40;
+        const y = 16 + rand(seed + 17) * 54;
+        const rot = -6 + rand(seed + 31) * 12;
+        const fade = age <= FADE_START ? 1 : Math.max(0, 1 - (age - FADE_START) / FADE_LEN);
+        const chars = Array.from(line.text);
+        let text = line.text;
+        if (i === index) {
+          const next = lines[i + 1];
+          const span = Math.max(0.8, (next ? next.t : position + 6) - line.t);
+          const per = Math.min(0.11, span / Math.max(1, chars.length));
+          const shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
+          text = chars.slice(0, shown).join('');
+        }
+        out.push({
+          key: play.song.id + '-' + i,
+          text,
+          tr: line.tr || '',
+          x: Number(x.toFixed(2)),
+          y: Number(y.toFixed(2)),
+          rot: Number(rot.toFixed(1)),
+          opacity: i === index ? 1 : Number((fade * 0.9).toFixed(3)),
+        });
+      }
     }
-    const line = lines[index];
-    const next = lines[index + 1];
-    const span = Math.max(0.8, (next ? next.t : position + 6) - line.t);
-    const chars = Array.from(line.text);
-    const per = Math.min(0.11, span / Math.max(1, chars.length));
-    const shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
-    writeFileSync(OVERLAY_FILE, JSON.stringify({ text: chars.slice(0, shown).join(''), tr: line.tr || '' }), 'utf8');
+    writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: out }), 'utf8');
   } catch (e) {
     /* transient: next tick retries */
   } finally {

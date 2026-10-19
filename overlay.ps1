@@ -1,99 +1,119 @@
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public static class OverlayWin {
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int index);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int index, int value);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
 "@
 
 $stateFile = Join-Path $env:TEMP 'dsh-netease-overlay.json'
-$script:lineText = ''
-$script:transText = ''
 
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$width = 960
-$height = 170
+$window = New-Object System.Windows.Window
+$window.WindowStyle = 'None'
+$window.AllowsTransparency = $true
+$window.Background = [System.Windows.Media.Brushes]::Transparent
+$window.Topmost = $true
+$window.ShowInTaskbar = $false
+$window.ShowActivated = $false
+$window.WindowState = 'Normal'
+$window.Left = 0
+$window.Top = 0
+$window.Width = [System.Windows.SystemParameters]::PrimaryScreenWidth
+$window.Height = [System.Windows.SystemParameters]::PrimaryScreenHeight
 
-$form = New-Object System.Windows.Forms.Form
-$form.FormBorderStyle = 'None'
-$form.StartPosition = 'Manual'
-$form.Width = $width
-$form.Height = $height
-$form.Left = [int](($screen.Width - $width) / 2)
-$form.Top = [int]($screen.Height - $height - 90)
-$form.TopMost = $true
-$form.ShowInTaskbar = $false
-$form.BackColor = [System.Drawing.Color]::FromArgb(11, 14, 22)
-$form.Opacity = 1.0
+$canvas = New-Object System.Windows.Controls.Canvas
+$canvas.ClipToBounds = $true
+$window.Content = $canvas
 
-$picture = New-Object System.Windows.Forms.PictureBox
-$picture.Dock = 'Fill'
-$picture.BackColor = [System.Drawing.Color]::FromArgb(11, 14, 22)
-$form.Controls.Add($picture)
-
-$fontMain = New-Object System.Drawing.Font('Microsoft YaHei', 24, ([System.Drawing.FontStyle]::Bold -bor [System.Drawing.FontStyle]::Italic))
-$fontTr = New-Object System.Drawing.Font('Microsoft YaHei', 13)
-$goldBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(216, 165, 35))
-$whiteBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 254, 239))
-$shadowBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(0, 0, 0))
-$fmt = New-Object System.Drawing.StringFormat
-$fmt.Alignment = [System.Drawing.StringAlignment]::Center
-$fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
-
-function Render-Overlay {
-  $w = $picture.Width
-  $h = $picture.Height
-  if ($w -le 0 -or $h -le 0) { return }
-  $bmp = New-Object System.Drawing.Bitmap $w, $h
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-  $g.Clear([System.Drawing.Color]::FromArgb(11, 14, 22))
-  $rectMain = New-Object System.Drawing.RectangleF(16, 14, ($w - 32), 90)
-  $rectTr = New-Object System.Drawing.RectangleF(16, 108, ($w - 32), 44)
-  if ($script:lineText) {
-    $g.DrawString($script:lineText, $fontMain, $shadowBrush, ($rectMain.X + 2), ($rectMain.Y + 2), $fmt)
-    $g.DrawString($script:lineText, $fontMain, $goldBrush, ($rectMain.X + 1), ($rectMain.Y + 1), $fmt)
-    $g.DrawString($script:lineText, $fontMain, $whiteBrush, $rectMain, $fmt)
-  }
-  if ($script:transText) {
-    $g.DrawString($script:transText, $fontTr, $whiteBrush, $rectTr, $fmt)
-  }
-  $g.Dispose()
-  $old = $picture.Image
-  $picture.Image = $bmp
-  if ($old) { $old.Dispose() }
-}
-
-$form.Add_Load({
-  $hwnd = $form.Handle
+$window.Add_SourceInitialized({
+  $helper = New-Object System.Windows.Interop.WindowInteropHelper($window)
+  $hwnd = $helper.Handle
   $ex = [OverlayWin]::GetWindowLong($hwnd, -20)
   [OverlayWin]::SetWindowLong($hwnd, -20, $ex -bor 0x20 -bor 0x80 -bor 0x08000000) | Out-Null
 })
 
-$timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 120
+$script:blocks = @{}
+
+function New-Block {
+  $panel = New-Object System.Windows.Controls.StackPanel
+  $panel.Width = [double]($canvas.ActualWidth * 0.6)
+  if ($panel.Width -le 0) { $panel.Width = 700 }
+  $panel.HorizontalAlignment = 'Center'
+
+  $main = New-Object System.Windows.Controls.TextBlock
+  $main.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei')
+  $main.FontSize = 26
+  $main.FontWeight = [System.Windows.FontWeights]::Bold
+  $main.FontStyle = [System.Windows.FontStyles]::Italic
+  $main.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 255, 254, 239))
+  $main.TextAlignment = 'Center'
+  $main.TextWrapping = 'Wrap'
+  $main.Effect = New-Object System.Windows.Media.Effects.DropShadowEffect
+  $main.Effect.Color = [System.Windows.Media.Color]::FromArgb(255, 216, 165, 35)
+  $main.Effect.BlurRadius = 10
+  $main.Effect.ShadowDepth = 0
+  $main.Effect.Opacity = 0.95
+
+  $tr = New-Object System.Windows.Controls.TextBlock
+  $tr.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei')
+  $tr.FontSize = 15
+  $tr.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(210, 255, 254, 239))
+  $tr.TextAlignment = 'Center'
+  $tr.TextWrapping = 'Wrap'
+  $tr.Margin = New-Object System.Windows.Thickness(0, 6, 0, 0)
+
+  $panel.Children.Add($main) | Out-Null
+  $panel.Children.Add($tr) | Out-Null
+  return @{ panel = $panel; main = $main; tr = $tr }
+}
+
+$timer = New-Object System.Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromMilliseconds(120)
 $timer.Add_Tick({
   try {
     if (-not (Test-Path $stateFile)) { return }
     $raw = [System.IO.File]::ReadAllText($stateFile)
     if ([string]::IsNullOrWhiteSpace($raw)) { return }
     $state = $raw | ConvertFrom-Json
-    $nextLine = [string]$state.text
-    $nextTr = [string]$state.tr
-    if ($nextLine -ne $script:lineText -or $nextTr -ne $script:transText) {
-      $script:lineText = $nextLine
-      $script:transText = $nextTr
-      Render-Overlay
+    $items = @($state.lines)
+    $w = $canvas.ActualWidth
+    $h = $canvas.ActualHeight
+    if ($w -le 0) { $w = $window.Width }
+    if ($h -le 0) { $h = $window.Height }
+    $seen = @{}
+    foreach ($item in $items) {
+      if (-not $item) { continue }
+      $key = [string]$item.key
+      if ([string]::IsNullOrEmpty($key)) { continue }
+      $seen[$key] = $true
+      $block = $script:blocks[$key]
+      if (-not $block) {
+        $block = New-Block
+        $script:blocks[$key] = $block
+        $canvas.Children.Add($block.panel) | Out-Null
+        $block.panel.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 0.5)
+        $block.panel.RenderTransform = New-Object System.Windows.Media.RotateTransform([double]$item.rot)
+      }
+      $block.panel.Width = [Math]::Max(320, ($w * 0.4))
+      $block.main.Text = [string]$item.text
+      $block.tr.Text = [string]$item.tr
+      $block.panel.Opacity = [double]$item.opacity
+      [System.Windows.Controls.Canvas]::SetLeft($block.panel, (($item.x / 100) * $w * 0.625 - ($block.panel.Width / 2)))
+      [System.Windows.Controls.Canvas]::SetTop($block.panel, (($item.y / 100) * $h * 0.75 - 50))
+    }
+    foreach ($key in @($script:blocks.Keys)) {
+      if (-not $seen.ContainsKey($key)) {
+        $canvas.Children.Remove($script:blocks[$key].panel) | Out-Null
+        $script:blocks.Remove($key)
+      }
     }
   } catch { }
 })
 $timer.Start()
 
-$form.Show() | Out-Null
-[OverlayWin]::ShowWindow($form.Handle, 4) | Out-Null
-[System.Windows.Forms.Application]::Run() | Out-Null
+$window.Show() | Out-Null
+$app = New-Object System.Windows.Application
+$app.Run() | Out-Null
