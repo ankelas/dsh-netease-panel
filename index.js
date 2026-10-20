@@ -45,7 +45,7 @@ function findAppExe() {
 
 let child = null;
 let buffers = '';
-const state = { ok: true, session: false, title: '', artist: '', album: '', status: '', app: '' };
+const state = { ok: true, session: false, title: '', artist: '', album: '', status: '', app: '', volume: null, titleSince: 0 };
 let playlists = { at: 0, items: [], source: 'none' };
 const lyricCache = new Map();
 const metaCache = new Map();
@@ -82,7 +82,11 @@ function startHelper() {
       if (!line) continue;
       try {
         const msg = JSON.parse(line);
-        if (msg && 'session' in msg) Object.assign(state, msg);
+        if (msg && 'session' in msg) {
+          const prevTitle = state.title;
+          Object.assign(state, msg);
+          if (msg.title && msg.title !== prevTitle) state.titleSince = Date.now();
+        }
       } catch (e) { /* ignore malformed line */ }
     }
   });
@@ -233,11 +237,14 @@ function applyElogLine(line, ts) {
     try { data = JSON.parse(m[0]); } catch { return; }
     const id = Number(data && data.songId);
     if (!id) return;
+    const same = elog.song && elog.song.id === id;
     const meta = metaCache.get(String(id));
     elog.song = meta ? { ...meta } : { id, name: '', artist: '', duration: 0 };
     elog.pausing = false;
-    elog.position = 0;
-    elog.relativeTime = Date.now();
+    if (!same) {
+      elog.position = 0;
+      elog.relativeTime = Date.now();
+    }
     if (!meta) ensureMeta(id);
     return;
   }
@@ -277,6 +284,47 @@ function playState() {
     position: Math.max(0, Math.round(position * 10) / 10),
     song: meta,
   };
+}
+
+let lastSmtcSync = 0;
+
+async function findSongByTitle(title, artist) {
+  try {
+    const q = encodeURIComponent((title + ' ' + (artist || '')).trim());
+    const res = await fetch(
+      'https://music.163.com/api/search/get/web?s=' + q + '&type=1&limit=5',
+      { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://music.163.com/' } },
+    );
+    const data = await res.json();
+    const songs = (data && data.result && data.result.songs) || [];
+    return songs.find((s) => s.name === title) || songs[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Some client transitions (gapless / preloaded queue) never write a new
+// "resource load" line to the play log, so the log alone can keep reporting the
+// previous song. The media session title does change; use it to resync.
+async function syncFromSmtc() {
+  if (Date.now() - lastSmtcSync < 1200) return;
+  lastSmtcSync = Date.now();
+  if (!state.session || !state.title) return;
+  const current = elog.song;
+  if (current && current.name === state.title) return;
+  const song = await findSongByTitle(state.title, state.artist);
+  if (!song) return;
+  const meta = {
+    id: Number(song.id),
+    name: song.name || state.title,
+    artist: (song.artists || []).map((a) => a.name).filter(Boolean).join(' / ') || state.artist,
+    duration: (song.duration || 0) / 1000,
+  };
+  metaCache.set(String(meta.id), meta);
+  elog.song = meta;
+  elog.pausing = state.status !== 'Playing';
+  elog.position = 0;
+  elog.relativeTime = state.titleSince || Date.now();
 }
 
 function startElog() {
@@ -536,6 +584,7 @@ async function overlayTick() {
   if (overlay.busy) return;
   overlay.busy = true;
   try {
+    await syncFromSmtc();
     const play = playState();
     if (!play.song) {
       writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
@@ -663,6 +712,7 @@ export function apply(ctx) {
         return reply(res, 200, state);
       }
       if (p === '/netease/play') {
+        await syncFromSmtc();
         return reply(res, 200, playState());
       }
       if (p === '/netease/play-song') {
