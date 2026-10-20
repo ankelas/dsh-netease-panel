@@ -501,7 +501,7 @@ window.__ModuleLoader__.load({
 
       return h(React.Fragment, null,
         h('style', { key: 'style' }, CSS),
-        lyricOn && !externalOn && visible.length
+        lyricOn && visible.length
           ? h('div', { key: 'lyric', className: 'ntp-lyric-stage', 'aria-hidden': 'true' },
               visible.map(({ line, i, age, isCurrent }) => {
                 const seed = i * 137 + (songId || 1);
