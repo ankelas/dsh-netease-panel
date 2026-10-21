@@ -73,6 +73,13 @@ public interface ISimpleAudioVolume {
     int GetMute(out bool mute);
 }
 
+public static class OverlayFocus {
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    public static IntPtr Get() { return GetForegroundWindow(); }
+    public static void Restore(IntPtr h) { if (h != IntPtr.Zero) SetForegroundWindow(h); }
+}
+
 public static class AudioVolume {
     private static ISimpleAudioVolume Find(int pid) {
         var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
@@ -103,6 +110,35 @@ public static class AudioVolume {
             }
         }
         return fallback;
+    }
+
+    public static int GetSessionState(int pid) {
+        var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
+        IMMDevice device;
+        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
+        Guid iid = typeof(IAudioSessionManager2).GUID;
+        object obj;
+        device.Activate(ref iid, 1, IntPtr.Zero, out obj);
+        var manager = (IAudioSessionManager2)obj;
+        IAudioSessionEnumerator sessions;
+        manager.GetSessionEnumerator(out sessions);
+        int count;
+        sessions.GetCount(out count);
+        int result = 0;
+        for (int i = 0; i < count; i++) {
+            IAudioSessionControl control;
+            sessions.GetSession(i, out control);
+            var control2 = control as IAudioSessionControl2;
+            if (control2 == null) continue;
+            int spid;
+            control2.GetProcessId(out spid);
+            if (spid != pid) continue;
+            int state;
+            control.GetState(out state);
+            if (state == 1) return 1;
+            result = state;
+        }
+        return result;
     }
 
     public static float GetVolume(int pid) {
@@ -183,7 +219,10 @@ while ($true) {
             }
           }
         }
-        Emit @{ ok = $true; session = $false; title = $fallbackTitle; artist = $fallbackArtist; status = 'Unknown'; app = 'cloudmusic.exe'; volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
+        $sessionState = 0
+        if ($cmPid -gt 0) { $sessionState = [AudioVolume]::GetSessionState($cmPid) }
+        $fallbackStatus = $(if ($sessionState -eq 1) { 'Playing' } else { 'Paused' })
+        Emit @{ ok = $true; session = ($fallbackTitle -ne ''); title = $fallbackTitle; artist = $fallbackArtist; status = $fallbackStatus; app = 'cloudmusic.exe'; source = 'window'; volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
         continue
       }
       $p = Await ($s.TryGetMediaPropertiesAsync()) $propsType
@@ -196,6 +235,7 @@ while ($true) {
         album = [string]$p.AlbumTitle
         status = [string]$info.PlaybackStatus
         app = [string]$s.SourceAppUserModelId
+        source = 'smtc'
         volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null })
         muted = $muted
       }
@@ -219,7 +259,19 @@ while ($true) {
     }
     elseif ($cmd -like 'open *') {
       $url = $cmd.Substring(5).Trim()
-      if ($url -match '^orpheus://') { Start-Process $url; Emit @{ ok = $true; opened = $url } }
+      if ($url -match '^orpheus://') {
+        $prev = [OverlayFocus]::Get()
+        Start-Process $url
+        $deadline = (Get-Date).AddMilliseconds(1500)
+        while ((Get-Date) -lt $deadline) {
+          Start-Sleep -Milliseconds 100
+          $fg = [OverlayFocus]::Get()
+          if ($fg -ne $prev) { break }
+        }
+        Start-Sleep -Milliseconds 120
+        [OverlayFocus]::Restore($prev)
+        Emit @{ ok = $true; opened = $url; focused = $prev.ToString() }
+      }
       else { Emit @{ ok = $false; error = 'bad-url' } }
     }
     else {

@@ -311,6 +311,7 @@ async function syncFromSmtc() {
   if (Date.now() - lastSmtcSync < 1200) return;
   lastSmtcSync = Date.now();
   if (!state.session || !state.title) return;
+  if (state.source === 'window') return;
   const current = elog.song;
   if (current && current.name === state.title) return;
   const song = await findSongByTitle(state.title, state.artist);
@@ -722,7 +723,15 @@ export function apply(ctx) {
       const p = url.pathname;
       if (p === '/netease/state') {
         send('state');
-        return reply(res, 200, state);
+        const out = { ...state };
+        if (!out.title && elog.song && elog.song.name) {
+          out.title = elog.song.name;
+          out.artist = elog.song.artist || '';
+          out.session = true;
+          out.status = playState().playing ? 'Playing' : 'Paused';
+          out.source = 'elog';
+        }
+        return reply(res, 200, out);
       }
       if (p === '/netease/offset') {
         const v = Number(url.searchParams.get('v'));
