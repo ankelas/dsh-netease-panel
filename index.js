@@ -558,7 +558,10 @@ async function fetchPlaylistTracks(id) {
   }
 }
 
+let lastPlayCommand = { id: '', at: 0 };
 function playSongCommand(id) {
+  if (id === lastPlayCommand.id && Date.now() - lastPlayCommand.at < 5000) return;
+  lastPlayCommand = { id, at: Date.now() };
   const payload = JSON.stringify({ type: 'song', id: String(id), cmd: 'play' });
   const encoded = Buffer.from(payload, 'utf8').toString('base64');
   send('open orpheus://' + encoded);
@@ -725,6 +728,16 @@ export function apply(ctx) {
         const v = Number(url.searchParams.get('v'));
         if (Number.isFinite(v)) lyricOffset = Math.max(-5, Math.min(5, v));
         return reply(res, 200, { ok: true, offset: lyricOffset });
+      }
+      if (p === '/netease/diag') {
+        let size = -1;
+        try { size = statSync(elog.path).size; } catch (e) { /* ignore */ }
+        return reply(res, 200, {
+          state,
+          elog: { path: elog.path || '', size, offset: elog.offset, song: elog.song, pending: elog.pending.length },
+          platform: process.platform,
+          node: process.version,
+        });
       }
       if (p === '/netease/play') {
         await syncFromSmtc();

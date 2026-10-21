@@ -467,6 +467,7 @@ window.__ModuleLoader__.load({
         const q = queueRef.current;
         if (!q || !q.ids || !q.ids.length) return;
         if (!play || !play.song || !play.playing) return;
+        if (!remote || !remote.session) return;
         const dur = play.song.duration || 0;
         if (dur < 10) return;
         const pos = play.position + (play.playing ? (now - play.at) / 1000 : 0);
@@ -482,7 +483,6 @@ window.__ModuleLoader__.load({
         if (next >= q.ids.length || next < 0) next = 0;
         const nid = q.ids[next];
         if (nid) getJson('/netease/play-song?id=' + encodeURIComponent(nid)).catch(() => {});
-        setTimeout(() => { firedRef.current = ''; }, 2500);
       }, [play, mode, now]);
       let currentIndex = -1;
       if (lyric.id === songId && lyric.lines.length) {

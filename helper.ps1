@@ -138,7 +138,7 @@ $propsType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMed
 
 function Find-Session($manager) {
   foreach ($s in $manager.GetSessions()) {
-    if ($s.SourceAppUserModelId -match 'cloudmusic') { return $s }
+    if ($s.SourceAppUserModelId -match 'cloudmusic|netease|orpheus') { return $s }
   }
   return $null
 }
@@ -169,7 +169,21 @@ while ($true) {
       $muted = $false
       if ($cmPid -gt 0) { $vol = [AudioVolume]::GetVolume($cmPid) }
       if ($null -eq $s) {
-        Emit @{ ok = $true; session = $false; volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
+        $fallbackTitle = ''
+        $fallbackArtist = ''
+        if ($cmPid -gt 0) {
+          $proc = Get-Process -Id $cmPid -ErrorAction SilentlyContinue
+          if ($proc -and $proc.MainWindowTitle) {
+            $parts = $proc.MainWindowTitle -split ' - ', 2
+            if ($parts.Count -eq 2) {
+              $fallbackTitle = $parts[0].Trim()
+              $fallbackArtist = $parts[1].Trim()
+            } else {
+              $fallbackTitle = $proc.MainWindowTitle.Trim()
+            }
+          }
+        }
+        Emit @{ ok = $true; session = $false; title = $fallbackTitle; artist = $fallbackArtist; status = 'Unknown'; app = 'cloudmusic.exe'; volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
         continue
       }
       $p = Await ($s.TryGetMediaPropertiesAsync()) $propsType
