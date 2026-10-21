@@ -48,6 +48,7 @@ let buffers = '';
 const state = { ok: true, session: false, title: '', artist: '', album: '', status: '', app: '', volume: null, titleSince: 0 };
 let playlists = { at: 0, items: [], source: 'none' };
 const lyricCache = new Map();
+let lyricOffset = 0;
 const metaCache = new Map();
 
 /* ────────────────────────────── SMTC helper ────────────────────────────── */
@@ -85,7 +86,7 @@ function startHelper() {
         if (msg && 'session' in msg) {
           const prevTitle = state.title;
           Object.assign(state, msg);
-          if (msg.title && msg.title !== prevTitle) state.titleSince = Date.now();
+          if (msg.title && msg.title !== prevTitle) state.titleSince = Date.now() - 300;
         }
       } catch (e) { /* ignore malformed line */ }
     }
@@ -275,9 +276,9 @@ function playState() {
   if (!elog.song) return { ok: true, playing: false, song: null, position: 0 };
   const meta = metaCache.get(String(elog.song.id)) || elog.song;
   if (!meta.duration) ensureMeta(elog.song.id);
-  const position = elog.pausing
+  const position = (elog.pausing
     ? elog.position
-    : Math.min((Date.now() - elog.relativeTime) / 1000, meta.duration || 1e9);
+    : Math.min((Date.now() - elog.relativeTime) / 1000, meta.duration || 1e9)) + lyricOffset;
   return {
     ok: true,
     playing: !elog.pausing,
@@ -586,6 +587,10 @@ async function overlayTick() {
   try {
     await syncFromSmtc();
     const play = playState();
+    if (play.song && play.song.duration > 0 && play.position >= play.song.duration - 1) {
+      writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
+      return;
+    }
     if (!play.song) {
       writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
       return;
@@ -613,18 +618,23 @@ async function overlayTick() {
         const rot = -6 + rand(seed + 31) * 12;
         const fade = age <= FADE_START ? 1 : Math.max(0, 1 - (age - FADE_START) / FADE_LEN);
         const chars = Array.from(line.text);
-        let text = line.text;
+        const text = line.text;
+        let shown = chars.length;
         if (i === index) {
           const next = lines[i + 1];
           const span = Math.max(0.8, (next ? next.t : position + 6) - line.t);
-          const per = Math.min(0.11, span / Math.max(1, chars.length));
-          const shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
-          text = chars.slice(0, shown).join('');
+          const per = Math.min(0.2, span / Math.max(1, chars.length));
+          shown = Math.max(0, Math.min(chars.length, Math.floor((position - line.t) / per) + 1));
         }
+        const trText = line.tr && line.tr !== line.text ? line.tr : '';
+        const trChars = Array.from(trText);
+        const trShown = Math.floor(trChars.length * (chars.length ? shown / chars.length : 1));
         out.push({
           key: play.song.id + '-' + i,
           text,
-          tr: line.tr || '',
+          shown,
+          tr: trText,
+          trShown,
           seed: Math.round(seed * 1000),
           rot: Number(rot.toFixed(1)),
           opacity: i === index ? 1 : Number((fade * 0.9).toFixed(3)),
@@ -688,7 +698,7 @@ export function apply(ctx) {
   startHelper();
   startElog();
   ctx.effect(() => {
-    const timer = setInterval(() => send('state'), 2500);
+    const timer = setInterval(() => send('state'), 1000);
     return () => {
       clearInterval(timer);
       send('quit');
@@ -710,6 +720,11 @@ export function apply(ctx) {
       if (p === '/netease/state') {
         send('state');
         return reply(res, 200, state);
+      }
+      if (p === '/netease/offset') {
+        const v = Number(url.searchParams.get('v'));
+        if (Number.isFinite(v)) lyricOffset = Math.max(-5, Math.min(5, v));
+        return reply(res, 200, { ok: true, offset: lyricOffset });
       }
       if (p === '/netease/play') {
         await syncFromSmtc();

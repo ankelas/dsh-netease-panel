@@ -49,7 +49,7 @@ function New-Block {
   $main.FontWeight = [System.Windows.FontWeights]::Bold
   $main.FontStyle = [System.Windows.FontStyles]::Italic
   $main.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 255, 254, 239))
-  $main.TextAlignment = 'Center'
+  $main.TextAlignment = 'Left'
   $main.TextWrapping = 'Wrap'
   $main.Effect = New-Object System.Windows.Media.Effects.DropShadowEffect
   $main.Effect.Color = [System.Windows.Media.Color]::FromArgb(255, 216, 165, 35)
@@ -61,13 +61,13 @@ function New-Block {
   $tr.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei')
   $tr.FontSize = 15
   $tr.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(210, 255, 254, 239))
-  $tr.TextAlignment = 'Center'
+  $tr.TextAlignment = 'Left'
   $tr.TextWrapping = 'Wrap'
   $tr.Margin = New-Object System.Windows.Thickness(0, 6, 0, 0)
 
   $panel.Children.Add($main) | Out-Null
   $panel.Children.Add($tr) | Out-Null
-  return @{ panel = $panel; main = $main; tr = $tr }
+  return @{ panel = $panel; main = $main; tr = $tr; text = ''; runs = @() }
 }
 
 $timer = New-Object System.Windows.Threading.DispatcherTimer
@@ -99,12 +99,19 @@ $timer.Add_Tick({
         $s = [double]$item.seed
         $r1 = [Math]::Abs([Math]::Sin($s) * 10000); $r1 = $r1 - [Math]::Floor($r1)
         $r2 = [Math]::Abs([Math]::Sin($s + 17) * 10000); $r2 = $r2 - [Math]::Floor($r2)
-        $block.px = 0.15 + $r1 * 0.7
-        $block.py = 0.2 + $r2 * 0.55
+        $block.px = 0.2 + $r1 * 0.6
+        $block.py = 0.22 + $r2 * 0.5
       }
-      $block.panel.Width = [Math]::Max(320, ($w * 0.4))
-      $block.main.Text = [string]$item.text
-      $block.tr.Text = [string]$item.tr
+      $lineText = [string]$item.text
+      $trText = [string]$item.tr
+      $shown = [int]$item.shown
+      $trShown = [int]$item.trShown
+      $lineLength = [Math]::Max($lineText.Length, $trText.Length)
+      $block.panel.Width = [Math]::Min(($w * 0.6), [Math]::Max(220, ($lineLength * 30 + 24)))
+      if ($shown -lt 1) { $block.main.Text = '' }
+      else { $block.main.Text = $lineText.Substring(0, [Math]::Min($shown, $lineText.Length)) }
+      if ($trShown -lt 1 -or $trText.Length -eq 0) { $block.tr.Text = '' }
+      else { $block.tr.Text = $trText.Substring(0, [Math]::Min($trShown, $trText.Length)) }
       $block.panel.Opacity = [double]$item.opacity
       $cx = $block.px * $w
       $cy = $block.py * $h

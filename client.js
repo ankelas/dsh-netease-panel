@@ -381,6 +381,16 @@ window.__ModuleLoader__.load({
       const [lyric, setLyric] = React.useState({ id: 0, lines: [] });
       const [clock, setClock] = React.useState(0);
       const [externalOn, setExternalOn] = React.useState(false);
+      const [offset, setOffset] = React.useState(() => {
+        try { return Number(localStorage.getItem('dsh-netease-offset')) || 0; } catch (e) { return 0; }
+      });
+
+      const changeOffset = async (delta) => {
+        const next = Math.max(-3, Math.min(3, Math.round((offset + delta) * 10) / 10));
+        setOffset(next);
+        try { localStorage.setItem('dsh-netease-offset', String(next)); } catch (e) { /* ignore */ }
+        try { await getJson('/netease/offset?v=' + next); } catch (e) { /* ignore */ }
+      };
 
       const toggleExternal = async () => {
         try {
@@ -393,6 +403,19 @@ window.__ModuleLoader__.load({
         }
         setTimeout(() => setNote(''), 3000);
       };
+
+      React.useEffect(() => {
+        let alive = true;
+        const check = async () => {
+          try {
+            const data = await getJson('/netease/overlay');
+            if (alive) setExternalOn(Boolean(data && data.on));
+          } catch (e) { /* ignore */ }
+        };
+        check();
+        const timer = setInterval(check, 5000);
+        return () => { alive = false; clearInterval(timer); };
+      }, []);
 
       const toggleLyric = () => {
         setLyricOn((on) => {
@@ -411,7 +434,7 @@ window.__ModuleLoader__.load({
           } catch (e) { /* host offline */ }
         };
         tick();
-        const timer = setInterval(tick, 900);
+        const timer = setInterval(tick, 600);
         const beat = setInterval(() => setClock((n) => n + 1), 70);
         return () => { alive = false; clearInterval(timer); clearInterval(beat); };
       }, []);
@@ -479,7 +502,7 @@ window.__ModuleLoader__.load({
         : (play && play.song && play.song.duration ? play.song.duration : (cur ? cur.t + 6 : 6));
       const lineSpan = cur ? Math.max(0.8, lineEnd - cur.t) : 1;
       const elapsed = cur ? Math.max(0, position - cur.t) : 0;
-      const perChar = Math.min(0.11, lineSpan / Math.max(1, chars.length));
+      const perChar = Math.min(0.2, lineSpan / Math.max(1, chars.length));
       const shown = Math.max(0, Math.min(chars.length, Math.floor(elapsed / perChar) + 1));
       const frac = chars.length ? shown / chars.length : 1;
       const trShown = Math.floor(trChars.length * frac);
@@ -488,7 +511,8 @@ window.__ModuleLoader__.load({
       const FADE_START = 8.0;
       const FADE_LEN = 1.5;
       const visible = [];
-      if (currentIndex >= 0) {
+      const atEnd = !!(play && play.song && play.song.duration > 0 && position >= play.song.duration - 1);
+      if (currentIndex >= 0 && !atEnd) {
         for (let i = Math.max(0, currentIndex - 4); i <= currentIndex; i++) {
           const line = lyric.lines[i];
           const age = position - line.t;
@@ -618,6 +642,13 @@ window.__ModuleLoader__.load({
               onClick: toggleExternal,
               title: '在 DSH 之外显示歌词（独立置顶小窗）',
             }, externalOn ? '外部歌词 · 开' : '外部歌词'),
+          ),
+
+          h('div', { className: 'ntp-vol' },
+            h('span', { className: 'ntp-src' }, '歌词偏移'),
+            h('button', { type: 'button', className: 'ntp-btn', onClick: () => changeOffset(-0.5), title: '歌词延后（如果歌词来得早）' }, '−0.5s'),
+            h('span', { className: 'ntp-vol-val' }, (offset > 0 ? '+' : '') + offset + 's'),
+            h('button', { type: 'button', className: 'ntp-btn', onClick: () => changeOffset(0.5), title: '歌词提前（如果歌词来得晚）' }, '+0.5s'),
           ),
 
           h('div', { className: 'ntp-lists' },
