@@ -367,6 +367,12 @@ function startElog() {
         elog.pending += text;
         const parts = elog.pending.split('\n');
         elog.pending = parts.pop() || '';
+        if (parts.length <= 1 && elog.pending.length > 8192) {
+          elog.offset = Math.max(0, size - 2 * 1024 * 1024);
+          elog.pending = '';
+          elog.decoder = new TextDecoder('utf-8');
+          return;
+        }
         for (const raw of parts) {
           const line = raw.trim();
           if (!line) continue;
@@ -743,7 +749,7 @@ export function apply(ctx) {
         try { size = statSync(elog.path).size; } catch (e) { /* ignore */ }
         return reply(res, 200, {
           state,
-          elog: { path: elog.path || '', size, offset: elog.offset, song: elog.song, pending: elog.pending.length },
+          elog: { path: elog.path || '', size, offset: elog.offset, song: elog.song, pending: elog.pending.length, pendingHead: elog.pending.slice(0, 120), pendingNewlines: (elog.pending.match(/\n/g) || []).length, decoder: String(elog.decoder && elog.decoder.encoding) },
           platform: process.platform,
           node: process.version,
         });
