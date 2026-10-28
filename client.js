@@ -512,7 +512,8 @@ window.__ModuleLoader__.load({
       const FADE_LEN = 1.5;
       const visible = [];
       const atEnd = !!(play && play.song && play.song.duration > 0 && position >= play.song.duration - 1);
-      if (currentIndex >= 0 && !atEnd) {
+      const appStopped = !!(remote && remote.running === false);
+      if (currentIndex >= 0 && !atEnd && !appStopped) {
         for (let i = Math.max(0, currentIndex - 4); i <= currentIndex; i++) {
           const line = lyric.lines[i];
           const age = position - line.t;

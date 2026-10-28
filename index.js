@@ -45,7 +45,7 @@ function findAppExe() {
 
 let child = null;
 let buffers = '';
-const state = { ok: true, session: false, title: '', artist: '', album: '', status: '', app: '', volume: null, titleSince: 0 };
+const state = { ok: true, session: false, title: '', artist: '', album: '', status: '', app: '', volume: null, titleSince: 0, running: null };
 let playlists = { at: 0, items: [], source: 'none' };
 const lyricCache = new Map();
 let lyricOffset = 0;
@@ -276,12 +276,13 @@ function playState() {
   if (!elog.song) return { ok: true, playing: false, song: null, position: 0 };
   const meta = metaCache.get(String(elog.song.id)) || elog.song;
   if (!meta.duration) ensureMeta(elog.song.id);
-  const position = (elog.pausing
+  const appStopped = state.running === false;
+  const position = (elog.pausing || appStopped
     ? elog.position
     : Math.min((Date.now() - elog.relativeTime) / 1000, meta.duration || 1e9)) + lyricOffset;
   return {
     ok: true,
-    playing: !elog.pausing,
+    playing: !elog.pausing && !appStopped,
     position: Math.max(0, Math.round(position * 10) / 10),
     song: meta,
   };
@@ -363,7 +364,9 @@ function startElog() {
         const buf = Buffer.alloc(len);
         readSync(fd, buf, 0, len, elog.offset);
         elog.offset = size;
-        const text = elog.decoder.decode(buf, { stream: true });
+        const decoded = Buffer.alloc(buf.length);
+        for (let i = 0; i < buf.length; i++) decoded[i] = DECODE_TABLE[buf[i]];
+        const text = elog.decoder.decode(decoded, { stream: true });
         elog.pending += text;
         const parts = elog.pending.split('\n');
         elog.pending = parts.pop() || '';
@@ -597,6 +600,10 @@ async function overlayTick() {
   try {
     await syncFromSmtc();
     const play = playState();
+    if (state.running === false) {
+      writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
+      return;
+    }
     if (play.song && play.song.duration > 0 && play.position >= play.song.duration - 1) {
       writeFileSync(OVERLAY_FILE, JSON.stringify({ lines: [] }), 'utf8');
       return;

@@ -222,7 +222,7 @@ while ($true) {
         $sessionState = 0
         if ($cmPid -gt 0) { $sessionState = [AudioVolume]::GetSessionState($cmPid) }
         $fallbackStatus = $(if ($sessionState -eq 1) { 'Playing' } else { 'Paused' })
-        Emit @{ ok = $true; session = ($fallbackTitle -ne ''); title = $fallbackTitle; artist = $fallbackArtist; status = $fallbackStatus; app = 'cloudmusic.exe'; source = 'window'; volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
+        Emit @{ ok = $true; session = ($fallbackTitle -ne ''); title = $fallbackTitle; artist = $fallbackArtist; status = $fallbackStatus; app = 'cloudmusic.exe'; source = 'window'; running = ($cmPid -gt 0); volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null }); muted = $muted }
         continue
       }
       $p = Await ($s.TryGetMediaPropertiesAsync()) $propsType
@@ -236,6 +236,7 @@ while ($true) {
         status = [string]$info.PlaybackStatus
         app = [string]$s.SourceAppUserModelId
         source = 'smtc'
+        running = ($cmPid -gt 0)
         volume = $(if ($vol -ge 0) { [math]::Round($vol * 100, 1) } else { $null })
         muted = $muted
       }
